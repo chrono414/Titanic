@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 from scipy import stats
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.model_selection import GridSearchCV, train_test_split, cross_val_score
+from sklearn.linear_model import LogisticRegression
 
 str_FilePathTrain = 'Data/train.csv'
 str_FilePathTest = 'Data/test.csv'
@@ -17,12 +20,11 @@ df_Data = pd.concat([df_TrainingData, df_TestData], sort=False)
 # print(df_Data.describe())
 
 
-# Exploratory Analysis + DataCleaning
+## Exploratory Analysis + DataCleaning
 # It's so much faster in Excel with PivotTables and PivotCharts...admittedly this is a small data set
 # Based on simple analysis using Excel, key variables that seem to affect survivability are:
 #     age, PClass, Fare, Sex, Embarked.
 # Need to dummify and impute these columns, then do a heatmap to justify correlations.
-
 
 # Out of these, the fare, age and Embarked are missing data.
 
@@ -73,7 +75,12 @@ df_Data = pd.get_dummies(df_Data, drop_first=True)
 # print(df_Data.describe())
 
 #Split them back again and output to cleaned
+df_Survived = df_Data['Survived']
+df_Data = df_Data.drop(columns='Survived')
+
 df_TrainingData = df_Data.iloc[:891, :]
+df_Survived = df_Survived.iloc[:891]
+
 df_TestData = df_Data.iloc[891:, :]
 
 # print(df_TrainingData.head())
@@ -84,20 +91,45 @@ df_TestData = df_Data.iloc[891:, :]
 # print(df_TestData.info())
 # print(df_TestData.describe())
 
-df_TrainingData.to_csv("Data/train_cleaned.csv")
+# df_TrainingData.to_csv("Data/train_cleaned.csv")
+# df_TestData.to_csv("Data/test_cleaned.csv")
 
-# df_TestData = df_TestData.drop(columns='Survived')
-df_TestData.to_csv("Data/test_cleaned.csv")
+## Heatmap visualization using Seaborn
+# matrix_CorrCoef = df_TrainingData.corr(method='pearson')
+# sns.heatmap(matrix_CorrCoef, center=0, vmin=-1, vmax=1, cmap='bwr_r')
+# plt.show()
+
+## Prediction! Which estimator? KNN vs logistic regression
+
+# X_train, X_holdout, y_train, y_holdout = train_test_split(df_TrainingData, df_Survived, test_size=0.3, random_state=25)
+
+## Prediction using KNN - disappointing results even with n_neighbors GridSearchCV
+# Best params using holdout on training data: {'n_neighbors': 16} best score: 0.7207062600321027
+# score on holdout data: 0.6902985074626866
+# knn = KNeighborsClassifier()
+# param_grid = {'n_neighbors':np.arange(1,30)}
+# knn_cv = GridSearchCV(knn, param_grid, cv=5)
+# knn_cv.fit(X_train, y_train)
+# print(knn_cv.best_params_, knn_cv.best_score_)
+# print(knn_cv.score(X_holdout, y_holdout))
 
 
-#matrix_CorrCoef = df_TrainingData.corr(method='pearson')
-#sns.heatmap(matrix_CorrCoef, center=0, vmin=-1, vmax=1, cmap='bwr_r')
+## Prediction using Logistic Regression - seems to be much better 10% more accuracy on training set than KNN
+# Best params using holdout on training data: {'C': 1.0, 'penalty': 'l1'} best score: 0.8186195826645265
+# score on holdout data: 0.8022388059701493
+logreg = LogisticRegression()
+penalty = ['l1', 'l2'] # Create regularization penalty space
+C = np.logspace(0, 4, 10) # Create regularization hyperparameter space
+param_grid = dict(C=C, penalty=penalty) # Create hyperparameter options
+logreg_cv = GridSearchCV(logreg, param_grid, cv=5)
+# logreg_cv.fit(X_train, y_train)
+# print(logreg_cv.best_params_, logreg_cv.best_score_)
+# print(logreg_cv.score(X_holdout, y_holdout))
 
+logreg_cv.fit(df_TrainingData, df_Survived) #fitting now over the entire training dataset
+ar_prediction = logreg_cv.predict(df_TestData)
+df_prediction = pd.DataFrame(data=ar_prediction, index=np.arange(892, 1310), columns=['Survived'])
+df_prediction.index.names = ['PassengerID']
 
-#plt.figure(1)
-
-#sns.countplot(x='Sex', hue='Survived', data=df_TrainingData)
-
-#plt.show()
-
-
+#write into submission csv
+df_prediction.to_csv('Titanic - JasonT - submission file.csv')
